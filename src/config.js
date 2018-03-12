@@ -1,170 +1,64 @@
 /**
- * The configuration
+ * config.js - The configuration for the loader
  */
-;(function(seajs, util, config) {
 
-  var noCachePrefix = 'seajs-ts='
-  var noCacheTimeStamp = noCachePrefix + util.now()
+// The root path to use for id2uri parsing
+data.base = loaderDir
 
+// The loader directory
+data.dir = loaderDir
 
-  // Async inserted script
-  var loaderScript = document.getElementById('seajsnode')
+// The loader's full path
+data.loader = loaderPath
 
-  // Static script
-  if (!loaderScript) {
-    var scripts = document.getElementsByTagName('script')
-    loaderScript = scripts[scripts.length - 1]
-  }
+// The current working directory
+data.cwd = cwd
 
-  var loaderSrc = util.getScriptAbsoluteSrc(loaderScript) ||
-      util.pageUri // When sea.js is inline, set base to pageUri.
+// The charset for requesting files
+data.charset = "utf-8"
 
-  var base = util.dirname(getLoaderActualSrc(loaderSrc))
-  util.loaderDir = base
+// @Retention(RetentionPolicy.SOURCE)
+// The CORS options, Don't set CORS on default.
+//
+//data.crossorigin = undefined
 
-  // When src is "http://test.com/libs/seajs/1.0.0/sea.js", redirect base
-  // to "http://test.com/libs/"
-  var match = base.match(/^(.+\/)seajs\/[\d\.]+\/$/)
-  if (match) {
-    base = match[1]
-  }
+// data.alias - An object containing shorthands of module id
+// data.paths - An object containing path shorthands in module id
+// data.vars - The {xxx} variables in module id
+// data.map - An array containing rules to map module uri
+// data.debug - Debug mode. The default value is false
 
-  config.base = base
+seajs.config = function(configData) {
 
+  for (var key in configData) {
+    var curr = configData[key]
+    var prev = data[key]
 
-  var dataMain = loaderScript.getAttribute('data-main')
-  if (dataMain) {
-    config.main = dataMain
-  }
-
-
-  // The default charset of module file.
-  config.charset = 'utf-8'
-
-
-  /**
-   * The function to configure the framework
-   * config({
-   *   'base': 'path/to/base',
-   *   'alias': {
-   *     'app': 'biz/xx',
-   *     'jquery': 'jquery-1.5.2',
-   *     'cart': 'cart?t=20110419'
-   *   },
-   *   'map': [
-   *     ['test.cdn.cn', 'localhost']
-   *   ],
-   *   preload: [],
-   *   charset: 'utf-8',
-   *   debug: false
-   * })
-   *
-   */
-  seajs.config = function(o) {
-    for (var k in o) {
-      if (!o.hasOwnProperty(k)) continue
-
-      var previous = config[k]
-      var current = o[k]
-
-      if (previous && k === 'alias') {
-        for (var p in current) {
-          if (current.hasOwnProperty(p)) {
-
-            var prevValue = previous[p]
-            var currValue = current[p]
-
-            // Converts {jquery: '1.7.2'} to {jquery: 'jquery/1.7.2/jquery'}
-            if (/^\d+\.\d+\.\d+$/.test(currValue)) {
-              currValue = p + '/' + currValue + '/' + p
-            }
-
-            checkAliasConflict(prevValue, currValue, p)
-            previous[p] = currValue
-
-          }
+    // Merge object config such as alias, vars
+    if (prev && isObject(prev)) {
+      for (var k in curr) {
+        prev[k] = curr[k]
+      }
+    }
+    else {
+      // Concat array config such as map
+      if (isArray(prev)) {
+        curr = prev.concat(curr)
+      }
+      // Make sure that `data.base` is an absolute path
+      else if (key === "base") {
+        // Make sure end with "/"
+        if (curr.slice(-1) !== "/") {
+          curr += "/"
         }
+        curr = addBase(curr)
       }
-      else if (previous && (k === 'map' || k === 'preload')) {
-        // for config({ preload: 'some-module' })
-        if (util.isString(current)) {
-          current = [current]
-        }
 
-        util.forEach(current, function(item) {
-          if (item) {
-            previous.push(item)
-          }
-        })
-      }
-      else {
-        config[k] = current
-      }
-    }
-
-    // Makes sure config.base is an absolute path.
-    var base = config.base
-    if (base && !util.isAbsolute(base)) {
-      config.base = util.id2Uri((util.isRoot(base) ? '' : './') + base + '/')
-    }
-
-    // Uses map to implement nocache.
-    if (config.debug === 2) {
-      config.debug = 1
-      seajs.config({
-        map: [
-          [/^.*$/, function(url) {
-            if (url.indexOf(noCachePrefix) === -1) {
-              url += (url.indexOf('?') === -1 ? '?' : '&') + noCacheTimeStamp
-            }
-            return url
-          }]
-        ]
-      })
-    }
-
-    debugSync()
-
-    return this
-  }
-
-
-  function debugSync() {
-    if (config.debug) {
-      // For convenient reference
-      seajs.debug = !!config.debug
+      // Set config
+      data[key] = curr
     }
   }
 
-  debugSync()
-
-
-  function getLoaderActualSrc(src) {
-    if (src.indexOf('??') === -1) {
-      return src
-    }
-
-    // Such as: http://cdn.com/??seajs/1.2.0/sea.js,jquery/1.7.2/jquery.js
-    // Only support nginx combo style rule. If you use other combo rule, please
-    // explicitly config the base path and the alias for plugins.
-    var parts = src.split('??')
-    var root = parts[0]
-    var paths = util.filter(parts[1].split(','), function(str) {
-      return str.indexOf('sea.js') !== -1
-    })
-
-    return root + paths[0]
-  }
-
-  function checkAliasConflict(previous, current, key) {
-    if (previous && previous !== current) {
-      util.log('The alias config is conflicted:',
-          'key =', '"' + key + '"',
-          'previous =', '"' + previous + '"',
-          'current =', '"' + current + '"',
-          'warn')
-    }
-  }
-
-})(seajs, seajs._util, seajs._config)
-
+  emit("config", configData)
+  return seajs
+}
